@@ -1,68 +1,113 @@
 # create amazon vpc lattice service network
-resource "aws_vpclattice_service_network" "this" {
+resource "aws_vpclattice_service_network" "service_network" {
   name = var.service_network_name
 }
 
-#create a lambda target group
-resource "aws_vpclattice_target_group" "this" {
-  name = var.target_group_name
-  protocol = "HTTPS"
-  port = 443
-  vpc_identifier = var.vpc_id
-  health_check {
-    path = "/health"
-  }
-}
+# Todo - auth policy for service network
 
-# create vpc lattice target group attachment
-resource "aws_vpclattice_target_group_attachment" "this" {
-  service_network_identifier = aws_vpclattice_service_network.this.id
-  target_group_identifier = aws_vpclattice_target_group.this.id
-  target {
-    type = "AWS_LAMBDA"
-    identifier = var.lambda_arn
-  }
-}
 
 # create vpc lattice service for lambda target group
-resource "aws_vpclattice_service" "this" {
+resource "aws_vpclattice_service" "lambda_service" {
   name = var.service_name
-  service_network_identifier = aws_vpclattice_service_network.this.id
-  type = "HTTP_PROXY"
+  auth_type = "NONE"
   depends_on = [
-    aws_vpclattice_target_group.this
+    aws_vpclattice_target_group.lambda_tg
   ]
 }
 
 # create vpc lattice service network service association for our service
-resource "aws_vpclattice_service_network_service_association" "this" {
-    service_identifier = aws_vpclattice_service.this.id
-    service_network_identifier = aws_vpclattice_service_network.this.id
+resource "aws_vpclattice_service_network_service_association" "service_association" {
+    service_identifier = aws_vpclattice_service.lambda_service
+    service_network_identifier = aws_vpclattice_service_network.service_network
 
 }
 
-# use aws_vpclattice_listener resource to create a listener for our service for HTTPS 
-resource "aws_vpclattice_listener" "this" {
-  service_network_identifier = aws_vpclattice_service_network.this.id
-  service_identifier = aws_vpclattice_service.this.id
-  protocol = "HTTPS"
-  port = 443
-  certificate_arn = var.certificate_arn
-  action {
-    type = "FORWARD"
-    forward {
-      target_group {
-        target_group_identifier = aws_vpclattice_target_group.this.id
-      }
+# Todo auth policy for service
+#################
+resource "aws_vpclattice_access_log_subscription" "log_subscription" {
+  resource_identifier = aws_vpclattice_service.lambda_service.id
+  destination_arn     = aws_cloudwatch_log_group.log_group_lattice.arn
+}
+resource "aws_cloudwatch_log_group" "log_group_lattice" {
+  name              = "/aws/lattice/service/service-1"
+  retention_in_days = 7
+}
+
+
+
+#create a lambda target group
+resource "aws_vpclattice_target_group" "lambda_tg" {
+  name = var.target_group_name
+  type = "LAMBDA"
+}
+
+# create vpc lattice target group attachment
+resource "aws_vpclattice_target_group_attachment" "lambda_tg_attachement" {
+  target_group_identifier = aws_vpclattice_target_group.lambda_tg.id
+  target {
+    id = aws_lambda_function.lambda_function.arn
+  }
+
+}
+
+
+
+# use aws_vpclattice_listener resource to create listeners and rules for our service-1 and lambda-tg
+
+resource "aws_vpclattice_listener" "https_listener" {
+  name               = var.https_listener_name
+  protocol           = "HTTPS"
+  service_identifier = aws_vpclattice_service.lambda_service.id
+
+#   default_action {
+#     forward {
+#       target_groups {
+#         target_group_identifier = aws_vpclattice_target_group.lambda_target.id
+#       }
+#     }
+#   }
+  default_action {
+    fixed_response {
+      status_code = 404
     }
   }
 }
 
+# listener rule for path based routing to lambda target groups
+resource "aws_vpclattice_listener_rule" "service_network_listener_rule" {
+  name                = var.service_network_listener_rule
+  listener_identifier = aws_vpclattice_listener.https_listener.id
+  service_identifier  = aws_vpclattice_service.lambda_service.id
+  priority            = 20
+  match {
+    http_match {
+      path_match {
+        case_sensitive = true
+        match {
+          prefix = "/path-1"
+        }
+      }
+    }
+  }
+  action {
+    fixed_response {
+      status_code = 200
+    }
 
+  }
+#   action {
+#     forward {
+#       target_groups {
+#         target_group_identifier = aws_vpclattice_target_group.lambda_tg.id
+#       }
 
-# create aws vpc lattice service network association for 2 vpcs named VPC-1 and VPC-2
-resource "aws_vpclattice_service_network_vpc_association" "this" {
-  service_network_identifier = aws_vpclattice_service_network.this.id
-  vpc_identifier = var.vpc_id
-  security_group_ids = var.security_group_ids
+#     }
+
+#   }
+}
+
+resource "aws_vpclattice_service_network_vpc_association" "vpc_1_association" {
+  vpc_identifier             = var.vpc_1_id
+  service_network_identifier = aws_vpclattice_service_network.service_network.id
+#   security_group_ids         = [aws_security_group.example.id]
 }

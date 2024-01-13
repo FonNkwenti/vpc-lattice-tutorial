@@ -31,6 +31,19 @@ module "security_groups" {
 }
 
 
+module "vpc-lattice" {
+  source = "./modules/service-network"
+  service_network_name          = "vpc-lattice-service-network"
+  service_name                  = "my-lambda-service"
+  https_listener_name           = "https-listener"
+  target_group_name             = "lambda-target-group"
+  service_network_listener_rule = "path-based-rule"
+  lambda_arn                    = "path-based-rule"
+  vpc_1_id                      = "vpc-12345678" 
+  vpc_id                        = "vpc_1_vpc_id" # Replace with the ID of your VPC
+  
+}
+
 # # Lambda Function in VPC 1
 # module "lambda" {
 #   source = "./modules/lambda"
