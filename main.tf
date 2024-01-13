@@ -30,6 +30,28 @@ module "security_groups" {
   vpc_2_vpc_id = module.vpc2.vpc_id
 }
 
+module "lambda_1" {
+  source = "./modules/lambda"
+  function_name        = "Lambda-1"
+  role_name            = "MyLambdaExecutionRole"
+  handler              = "index.handler"
+  runtime              = "nodejs18.x"
+  timeout              = 10
+  memory_size          = 256
+}
+
+module "consumer_1_lambda" {
+  source = "./modules/lambda"
+  function_name        = "consumer-1-lambda"
+  role_name            = "MyLambdaExecutionRole"
+  handler              = "index.handler"
+  runtime              = "nodejs18.x"
+  timeout              = 10
+  memory_size          = 256
+
+  subnet_ids           = module.vpc1.subnet_ids
+  security_group_ids   = module.vpc1.security_group_ids
+}
 
 # module "vpc-lattice" {
 #   source = "./modules/service-network"
@@ -138,21 +160,21 @@ resource "aws_vpclattice_listener_rule" "service_network_listener_rule" {
       }
     }
   }
+  # action {
+  #   fixed_response {
+  #     status_code = 404
+  #   }
+
+  # }
   action {
-    fixed_response {
-      status_code = 404
+    forward {
+      target_groups {
+        target_group_identifier = aws_vpclattice_target_group.lambda_tg.id
+      }
+
     }
 
   }
-#   action {
-#     forward {
-#       target_groups {
-#         target_group_identifier = aws_vpclattice_target_group.lambda_tg.id
-#       }
-
-#     }
-
-#   }
 
 depends_on = [ aws_vpclattice_listener.https_listener ]
 }
@@ -164,12 +186,7 @@ resource "aws_vpclattice_service_network_vpc_association" "vpc_1_association" {
 }
 
 
-# # Lambda Function in VPC 1
-# module "lambda" {
-#   source = "./modules/lambda"
-#   vpc_id = module.vpc1.vpc_id
-#   # Add any additional Lambda configuration here
-# }
+
 
 # # EC2 Instance in VPC 2
 # module "ec2_instance" {
