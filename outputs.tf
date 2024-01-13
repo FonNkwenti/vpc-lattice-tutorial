@@ -8,4 +8,3 @@ output "vpc2_id" {
   value       = module.vpc2.vpc_id
 }
 
-# Add any other outputs needed for your main configuration
